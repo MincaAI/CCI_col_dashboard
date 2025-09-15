@@ -2,9 +2,14 @@
 Dashboard CCI France Colombia - Agent MarIA
 Application Streamlit principale
 """
+import os
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement en premier
+load_dotenv()
 
 # Configuration de la page
 st.set_page_config(
@@ -14,11 +19,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CSS pour élargir la sidebar
+st.markdown("""
+<style>
+    /* Élargir la sidebar */
+    .css-1d391kg, .css-1cypcdb, .css-1y4p8pa {
+        width: 25rem !important;
+        min-width: 25rem !important;
+        max-width: 25rem !important;
+    }
+    
+    /* Ajuster le contenu principal */
+    .css-18e3th9, .css-1d391kg + .css-1d391kg {
+        margin-left: 25rem !important;
+    }
+    
+    /* Sidebar pour les nouvelles versions de Streamlit */
+    section[data-testid="stSidebar"] {
+        width: 25rem !important;
+        min-width: 25rem !important;
+    }
+    
+    section[data-testid="stSidebar"] .css-1lcbmhc {
+        width: 25rem !important;
+        min-width: 25rem !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Imports des modules
 from utils.auth import check_authentication, show_logout_button
 from components.kpis import show_kpis_section, show_period_selector
 from components.conversations import show_conversations_section
-from database.connection import test_connection
 from config.settings import APP_TITLE, APP_SUBTITLE, CCI_COLORS
 
 def apply_custom_css():
@@ -28,24 +60,27 @@ def apply_custom_css():
     st.markdown(f"""
     <style>
     .main-header {{
-        background: linear-gradient(90deg, {CCI_COLORS['primary']} 0%, {CCI_COLORS['secondary']} 100%);
-        padding: 1rem;
-        border-radius: 10px;
+        background: #2C3E50;
+        padding: 1.5rem;
+        border-radius: 8px;
         margin-bottom: 2rem;
         color: white;
         text-align: center;
+        border-left: 4px solid #3498DB;
     }}
     
     .main-header h1 {{
         color: white !important;
         margin: 0;
-        font-size: 2.5rem;
+        font-size: 2rem;
+        font-weight: 600;
     }}
     
     .main-header h3 {{
-        color: #E8F4FD !important;
-        margin: 0;
+        color: #BDC3C7 !important;
+        margin: 0.5rem 0 0 0;
         font-weight: 300;
+        font-size: 1rem;
     }}
     
     .metric-container {{
@@ -126,8 +161,8 @@ def show_header():
     """
     st.markdown(f"""
     <div class="main-header">
-        <h1>🇨🇴 {APP_TITLE}</h1>
-        <h3>{APP_SUBTITLE}</h3>
+        <h1>Dashboard CCI France Colombia</h1>
+        <h3>Tableau de bord de l'agent MarIA</h3>
     </div>
     """, unsafe_allow_html=True)
 
@@ -135,49 +170,15 @@ def show_sidebar_info():
     """
     Afficher les informations dans la sidebar
     """
-    st.sidebar.markdown("""
-    <div class="sidebar-logo">
-        <div style="text-align: center;">
-            <h3 style="color: #1B4F72;">CCI France Colombia</h3>
-            <p style="color: #666; font-size: 0.9em;">Dashboard Agent MarIA</p>
-        </div>
+    from datetime import datetime
+    today = datetime.now().strftime("%d/%m/%Y")
+    
+    st.sidebar.markdown(f"""
+    <div style="text-align: left; padding: 1rem 0.5rem;">
+        <p style="color: #1B4F72; font-size: 1.1em; font-weight: 500;">Date : {today}</p>
     </div>
     """, unsafe_allow_html=True)
-    
-    st.sidebar.markdown("---")
-    
-    # Informations sur l'agent MarIA
-    st.sidebar.markdown("""
-    ### 🤖 À propos de MarIA
-    
-    **MarIA** est l'assistante virtuelle de la CCI France Colombia qui aide les membres à:
-    
-    - 🎯 Identifier leurs besoins
-    - 🤝 Trouver les services adaptés  
-    - 📞 Connecter avec les bons contacts
-    - 📋 Explorer nos 6 thèmes principaux
-    
-    ### 📊 Fonctionnalités du Dashboard
-    
-    - **KPIs**: Métriques clés de performance
-    - **Conversations**: Analyse détaillée des échanges
-    - **Résumés IA**: Synthèses automatiques
-    - **Export**: Données exportables
-    """)
 
-def show_connection_status():
-    """
-    Afficher le statut de connexion à la base de données
-    """
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 🔗 Statut de connexion")
-        
-        if test_connection():
-            st.success("✅ Base de données connectée")
-        else:
-            st.error("❌ Erreur de connexion")
-            st.stop()
 
 def main():
     """
@@ -195,12 +196,19 @@ def main():
     
     # Sidebar avec informations
     show_sidebar_info()
-    show_connection_status()
+    
+    # Navigation par boutons radio
+    st.sidebar.markdown("---")
+    page = st.sidebar.radio(
+        "Navigation",
+        ["KPIs", "Conversations"],
+        index=0  # KPIs par défaut
+    )
     
     # Sélecteur de période
     start_date, end_date = show_period_selector()
     
-    # Bouton de déconnexion
+    # Bouton de déconnexion (plus bas)
     show_logout_button()
     
     # Validation des dates
@@ -208,16 +216,9 @@ def main():
         st.error("❌ La date de début doit être antérieure à la date de fin.")
         return
     
-    # Affichage de la période sélectionnée
-    st.info(f"📅 Période d'analyse: du {start_date.strftime('%d/%m/%Y')} au {end_date.strftime('%d/%m/%Y')}")
-    
-    # Sections principales du dashboard
-    tab1, tab2 = st.tabs(["📊 KPIs", "💬 Conversations"])
-    
-    with tab1:
+    if page == "KPIs":
         show_kpis_section(start_date, end_date)
-    
-    with tab2:
+    else:
         show_conversations_section(start_date, end_date)
     
     # Footer

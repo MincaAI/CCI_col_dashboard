@@ -1,17 +1,54 @@
 """
-Module d'authentification pour le dashboard
+Module d'authentification pour le dashboard avec session persistante
 """
+import os
+import time
+import hashlib
 import streamlit as st
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement
+load_dotenv()
+
 from config.settings import AUTH_USERNAME, AUTH_PASSWORD
+
+# Session persistante avec cache
+@st.cache_data(ttl=24*3600)  # Cache pendant 24 heures
+def get_persistent_session():
+    """Créer une session persistante qui survit aux refreshs"""
+    return {
+        'authenticated': False,
+        'login_time': None,
+        'session_id': None
+    }
+
+def get_session():
+    """Récupérer ou créer la session persistante"""
+    if 'persistent_auth' not in st.session_state:
+        st.session_state.persistent_auth = get_persistent_session()
+    return st.session_state.persistent_auth
 
 def check_authentication():
     """
-    Vérifier l'authentification de l'utilisateur
+    Vérifier l'authentification avec session persistante (24h)
     """
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
+    session = get_session()
     
-    if not st.session_state.authenticated:
+    # Vérifier si la session a expiré (24 heures)
+    if session['authenticated'] and session['login_time']:
+        current_time = time.time()
+        session_duration = current_time - session['login_time']
+        
+        # Session expire après 24 heures (86400 secondes)
+        if session_duration > 86400:
+            session['authenticated'] = False
+            session['login_time'] = None
+            session['session_id'] = None
+            # Vider le cache pour forcer une nouvelle authentification
+            get_persistent_session.clear()
+            st.warning("⏰ Session expirée après 24h. Veuillez vous reconnecter.")
+    
+    if not session['authenticated']:
         show_login_form()
         return False
     
@@ -39,8 +76,17 @@ def show_login_form():
             
             if submit_button:
                 if authenticate_user(username, password):
+                    session = get_session()
+                    session['authenticated'] = True
+                    session['login_time'] = time.time()
+                    session['session_id'] = hashlib.md5(f"{username}_{time.time()}".encode()).hexdigest()
+                    
+                    # Mettre à jour aussi st.session_state pour compatibilité
                     st.session_state.authenticated = True
-                    st.success("✅ Connexion réussie !")
+                    st.session_state.username = username
+                    st.session_state.login_time = session['login_time']
+                    
+                    st.success("✅ Connexion réussie ! Session persistante 24h.")
                     st.rerun()
                 else:
                     st.error("❌ Nom d'utilisateur ou mot de passe incorrect")
@@ -49,13 +95,28 @@ def authenticate_user(username, password):
     """
     Authentifier l'utilisateur avec les credentials
     """
+    if not AUTH_USERNAME or not AUTH_PASSWORD:
+        st.error("❌ Configuration d'authentification manquante. Vérifiez le fichier .env")
+        return False
     return username == AUTH_USERNAME and password == AUTH_PASSWORD
 
 def logout():
     """
     Déconnecter l'utilisateur
     """
+    session = get_session()
+    session['authenticated'] = False
+    session['login_time'] = None
+    session['session_id'] = None
+    
+    # Nettoyer aussi st.session_state
     st.session_state.authenticated = False
+    st.session_state.login_time = None
+    if 'username' in st.session_state:
+        del st.session_state.username
+    
+    # Vider le cache
+    get_persistent_session.clear()
     st.rerun()
 
 def show_logout_button():
@@ -64,5 +125,6 @@ def show_logout_button():
     """
     with st.sidebar:
         st.markdown("---")
+        
         if st.button("🚪 Déconnexion", use_container_width=True):
             logout()

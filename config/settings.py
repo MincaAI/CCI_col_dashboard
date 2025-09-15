@@ -14,8 +14,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Configuration d'authentification
-AUTH_USERNAME = os.getenv("AUTH_USERNAME", "cci-col")
-AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "Maria2025!")
+AUTH_USERNAME = os.getenv("AUTH_USERNAME")
+AUTH_PASSWORD = os.getenv("AUTH_PASSWORD")
 
 # Configuration de l'application
 APP_TITLE = "Dashboard CCI France Colombia"

@@ -1,9 +1,13 @@
-# Environment variables
+# Environment variables - CRITICAL: Never commit these!
 .env
+.env.*
+*.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+config.env
+secrets.env
 
 # Dependencies
 node_modules/
