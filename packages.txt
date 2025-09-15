@@ -1,0 +1,3 @@
+# System packages required for Streamlit Cloud deployment
+# PostgreSQL client libraries
+libpq-dev
