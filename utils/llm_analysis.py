@@ -2,38 +2,89 @@
 Module d'analyse LLM pour les résumés de conversations
 """
 import os
-import openai
+import sys
+from openai import OpenAI
 import streamlit as st
 from dotenv import load_dotenv
 import json
+
+# Forcer l'encodage UTF-8 pour tout le script
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
 
 # Charger les variables d'environnement
 load_dotenv()
 
 from config.settings import OPENAI_API_KEY, MARIA_THEMES
 
-# Configuration OpenAI
-openai.api_key = OPENAI_API_KEY
+# Configuration OpenAI - Nouveau client avec headers ASCII
+client = OpenAI(
+    api_key=OPENAI_API_KEY,
+    default_headers={
+        "User-Agent": "CCI-Colombia-Dashboard/1.0"
+    }
+)
 
-def analyze_conversation_completion(last_message_content):
+def ensure_utf8(text):
+    """S'assurer qu'une chaîne est en UTF-8"""
+    if isinstance(text, bytes):
+        return text.decode('utf-8', errors='ignore')
+    return str(text).encode('utf-8', errors='ignore').decode('utf-8')
+
+def analyze_conversation_completion(messages_content):
     """
-    Analyser si une conversation est complète (contient un numéro WhatsApp)
+    Analyser si une conversation est complète (contient une recommandation de service)
     """
     try:
+        # Analyser tous les messages de MarIA, pas seulement le dernier
+        conversation_text = ""
+        if isinstance(messages_content, str):
+            # Si c'est juste le dernier message (ancien comportement)
+            conversation_text = messages_content
+        else:
+            # Si c'est une liste de messages (nouveau comportement)
+            for msg in messages_content:
+                if msg.get('role') == 'agent':  # Seulement les messages de MarIA
+                    conversation_text += f"{msg['content']}\n"
+        
         prompt = f"""
-        Analyse ce message final d'une conversation avec l'agent MarIA de la CCI France Colombia.
+        Analyse cette conversation avec l'agent MarIA de la CCI France Colombia pour déterminer si elle est COMPLÈTE.
         
-        Message: "{last_message_content}"
+        MESSAGES DE MARIA:
+        {conversation_text}
         
-        Détermine si cette conversation est COMPLÈTE selon ces critères:
-        1. Le message contient un numéro de téléphone WhatsApp (format +57 xxx xxx xxxx)
-        2. Le message indique une redirection vers un contact spécifique de l'équipe CCI
+        Une conversation est COMPLÈTE si MarIA a fait au moins UNE des actions suivantes:
+        1. Recommandé un service CCI spécifique
+        2. Fourni un contact (nom + numéro WhatsApp)
+        3. Orienté vers une personne de l'équipe CCI
+        4. Donné des informations concrètes sur un service
+        5. Fourni des liens utiles (réseaux sociaux, newsletter, etc.)
+        
+        Une conversation est INCOMPLÈTE si MarIA a seulement:
+        - Salué le client
+        - Posé des questions de qualification
+        - Demandé des précisions
+        - Donné des informations générales sur la CCI
+        
+        Exemples de messages COMPLETS (recommandations):
+        - "Je vous mets en contact avec Yasmine au +57 304 658 9045"
+        - "Pour l'accompagnement commercial, contactez Nicolas Velásquez"
+        - "Je vous recommande notre service de missions économiques"
+        - "Voici nos réseaux sociaux pour suivre nos événements"
+        - "Vous pouvez vous inscrire à notre newsletter"
+        
+        Exemples de messages INCOMPLETS:
+        - "Bonjour ! Pour mieux vous aider..."
+        - "Pourriez-vous me préciser votre secteur d'activité ?"
+        - "Ravie de vous accueillir dans notre communauté"
         
         Réponds uniquement par "COMPLÈTE" ou "INCOMPLÈTE".
         """
         
-        response = openai.chat.completions.create(
-            model="gpt-4",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=10,
             temperature=0
@@ -43,7 +94,8 @@ def analyze_conversation_completion(last_message_content):
         return "COMPLÈTE" in result.upper()
         
     except Exception as e:
-        st.error(f"Erreur lors de l'analyse de completion: {e}")
+        # Éviter st.error() qui cause des problèmes UTF-8 hors contexte Streamlit
+        print(f"Erreur lors de l'analyse de completion: {e}")
         return False
 
 def generate_conversation_summary(messages_df):
@@ -51,48 +103,38 @@ def generate_conversation_summary(messages_df):
     Générer un résumé structuré d'une conversation
     """
     try:
-        # Construire le contexte de la conversation
+        # Limiter aux 20 premiers messages pour économiser des tokens
+        limited_df = messages_df.head(20)
+        
+        # Construire le contexte de la conversation (limité)
         conversation_text = ""
-        for _, msg in messages_df.iterrows():
-            role = "Agent MarIA" if msg['role'] == 'agent' else "Client"
-            conversation_text += f"{role}: {msg['content']}\n"
+        for _, msg in limited_df.iterrows():
+            role = "Agent" if msg['role'] == 'agent' else "Client"
+            # Limiter chaque message à 300 caractères
+            content = str(msg['content'])[:300]
+            conversation_text += f"{role}: {content}\n"
         
-        prompt = f"""
-        Analyse cette conversation entre l'agent MarIA (assistant virtuel de la CCI France Colombia) et un membre de la CCI
+        # Prompt ultra-court pour économiser
+        prompt = f"""Conversation CCI:
+{conversation_text}
+
+Resume en 3 points courts (meme langue que conversation):
+1. Besoins du membre
+2. Services/contacts recommandes
+3. Statut"""
         
-        CONVERSATION:
-        {conversation_text}
-        
-        INSTRUCTIONS LINGUISTIQUES:
-        - Si la conversation est principalement en ESPAGNOL, génère le résumé en ESPAGNOL
-        - Si la conversation est principalement en FRANÇAIS, génère le résumé en FRANÇAIS
-        
-        Génère un résumé structuré CONCIS avec ces sections (sans formatage gras):
-        
-        1. BESOINS EXPRIMÉS (liste courte des besoins spécifiques) - a quoi s'interesse le membre
-        2. RECOMMANDATIONS DE MARIA (services recommandés, contacts mentionnés)
-        3. Questions posées par le membre
-        
-        RÈGLES DE FORMATAGE:
-        - N'utilise JAMAIS de formatage gras (**) 
-        - Pour les réseaux sociaux, écris simplement: "MarIA a fourni les liens Facebook, Instagram, LinkedIn, Twitter et newsletter"
-        - Pour les contacts, écris: "MarIA a orienté vers [Nom] pour [service]" 
-        - Pour les numéros WhatsApp, écris juste: "contact WhatsApp fourni"
-        - N'inclus JAMAIS les URLs complètes
-        - Sois CONCIS et évite les détails superflus
-        """
-        
-        response = openai.chat.completions.create(
-            model="gpt-4.1",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
+            max_tokens=150,  # Réduit de 300 à 150 pour économiser
             temperature=0.1
         )
         
         return response.choices[0].message.content.strip()
         
     except Exception as e:
-        st.error(f"Erreur lors de la génération du résumé: {e}")
+        # Éviter st.error() qui cause des problèmes UTF-8 hors contexte Streamlit
+        print(f"Erreur lors de la génération du résumé: {e}")
         return "Résumé non disponible"
 
 def extract_client_name_from_conversation(messages_df):
@@ -121,8 +163,8 @@ def extract_client_name_from_conversation(messages_df):
         Réponse (juste le nom):
         """
         
-        response = openai.chat.completions.create(
-            model="gpt-4",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=20,
             temperature=0
@@ -132,7 +174,8 @@ def extract_client_name_from_conversation(messages_df):
         return result if result != "INCONNU" else None
         
     except Exception as e:
-        st.error(f"Erreur lors de l'extraction du nom: {e}")
+        # Éviter st.error() qui cause des problèmes UTF-8 hors contexte Streamlit
+        print(f"Erreur lors de l'extraction du nom: {e}")
         return None
 
 def extract_company_from_conversation(messages_df):
@@ -161,10 +204,10 @@ def extract_company_from_conversation(messages_df):
         Réponse (juste le nom de l'entreprise):
         """
         
-        response = openai.chat.completions.create(
-            model="gpt-4",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=30,
+            max_tokens=20,  # Réduit de 30 à 20
             temperature=0
         )
         
@@ -172,7 +215,8 @@ def extract_company_from_conversation(messages_df):
         return result if result != "Non spécifié" else None
         
     except Exception as e:
-        st.error(f"Erreur lors de l'extraction de l'entreprise: {e}")
+        # Éviter st.error() qui cause des problèmes UTF-8 hors contexte Streamlit
+        print(f"Erreur lors de l'extraction de l'entreprise: {e}")
         return None
 
 def extract_themes_analysis(messages_df):
@@ -207,8 +251,8 @@ def extract_themes_analysis(messages_df):
         6. Suggestions d'amélioration: [OUI/NON]
         """
         
-        response = openai.chat.completions.create(
-            model="gpt-4",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0
@@ -217,7 +261,8 @@ def extract_themes_analysis(messages_df):
         return response.choices[0].message.content.strip()
         
     except Exception as e:
-        st.error(f"Erreur lors de l'analyse des thèmes: {e}")
+        # Éviter st.error() qui cause des problèmes UTF-8 hors contexte Streamlit
+        print(f"Erreur lors de l'analyse des thèmes: {e}")
         return "Analyse non disponible"
 
 def regenerate_summary_only(chatid):
@@ -253,7 +298,8 @@ def regenerate_summary_only(chatid):
             return False, "Erreur lors de la mise à jour en base"
         
     except Exception as e:
-        st.error(f"Erreur lors de la re-génération: {e}")
+        # Éviter st.error() qui cause des problèmes UTF-8 hors contexte Streamlit
+        print(f"Erreur lors de la re-génération: {e}")
         return False, str(e)
 
 def regenerate_all_summaries(start_date=None, end_date=None, limit=None):
@@ -311,7 +357,8 @@ def regenerate_all_summaries(start_date=None, end_date=None, limit=None):
         return results
         
     except Exception as e:
-        st.error(f"Erreur lors de la re-génération en batch: {e}")
+        # Éviter st.error() qui cause des problèmes UTF-8 hors contexte Streamlit
+        print(f"Erreur lors de la re-génération en batch: {e}")
         return {"success": 0, "errors": 1, "total": 0}
 
 def analyze_service_interest(messages_df):
@@ -355,12 +402,9 @@ def analyze_service_interest(messages_df):
     """
     
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Tu es un expert en analyse des besoins clients CCI. Identifie précisément le service d'intérêt."},
-                {"role": "user", "content": prompt}
-            ],
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],  # Pas de system message
             max_tokens=30,
             temperature=0
         )

@@ -7,15 +7,31 @@ from dotenv import load_dotenv
 # Charger les variables d'environnement
 load_dotenv()
 
+# Fonction pour lire les secrets (compatible Streamlit Cloud + local)
+def get_secret(key, default=None):
+    """
+    Lit les secrets depuis st.secrets (Streamlit Cloud) ou .env (local)
+    """
+    try:
+        import streamlit as st
+        # Essayer de lire depuis st.secrets (Streamlit Cloud)
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+    
+    # Sinon, lire depuis les variables d'environnement (.env)
+    return os.getenv(key, default)
+
 # Configuration de la base de données
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = get_secret("DATABASE_URL")
 
 # Configuration OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
 
 # Configuration d'authentification
-AUTH_USERNAME = os.getenv("AUTH_USERNAME")
-AUTH_PASSWORD = os.getenv("AUTH_PASSWORD")
+AUTH_USERNAME = get_secret("AUTH_USERNAME")
+AUTH_PASSWORD = get_secret("AUTH_PASSWORD")
 
 # Configuration de l'application
 APP_TITLE = "Dashboard CCI France Colombia"

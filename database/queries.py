@@ -86,20 +86,52 @@ def get_kpi_data(start_date, end_date):
 
 def get_completion_candidates(start_date, end_date):
     """
-    Récupérer les conversations candidates pour l'analyse de completion
-    (derniers messages de chaque conversation)
+    Récupérer toutes les conversations pour l'analyse de completion
     """
     query = """
-    WITH last_messages AS (
-        SELECT chatid::text as chatid, content, role, created_at,
-               ROW_NUMBER() OVER (PARTITION BY chatid ORDER BY created_at DESC) as rn
+    SELECT DISTINCT chatid::text as chatid,
+           MIN(created_at) as start_time,
+           MAX(created_at) as end_time,
+           COUNT(*) as message_count
+    FROM public.message 
+    WHERE created_at >= %s AND created_at <= %s
+    GROUP BY chatid
+    ORDER BY MAX(created_at) DESC
+    """
+    return execute_query(query, (start_date, end_date))
+
+def get_completion_stats(start_date, end_date):
+    """
+    Récupérer les statistiques de completion depuis la table conversation_analysis
+    """
+    query = """
+    SELECT 
+        COUNT(*) as total_conversations,
+        COUNT(CASE WHEN ca.is_completed = true THEN 1 END) as completed_count,
+        COUNT(CASE WHEN ca.is_completed = false THEN 1 END) as incomplete_count,
+        COUNT(CASE WHEN ca.is_completed IS NULL THEN 1 END) as not_analyzed_count
+    FROM (
+        SELECT DISTINCT m.chatid
+        FROM public.message m
+        WHERE m.created_at >= %s AND m.created_at <= %s
+    ) as conversations
+    LEFT JOIN conversation_analysis ca ON conversations.chatid::text = ca.chatid::text
+    """
+    return execute_query(query, (start_date, end_date))
+
+def get_engaged_conversations_count(start_date, end_date):
+    """
+    Récupérer le nombre de conversations engagées (> 2 messages)
+    """
+    query = """
+    SELECT COUNT(*) as engaged_conversations
+    FROM (
+        SELECT chatid, COUNT(*) as message_count
         FROM public.message 
         WHERE created_at >= %s AND created_at <= %s
-    )
-    SELECT chatid, content, role, created_at
-    FROM last_messages 
-    WHERE rn = 1
-    ORDER BY created_at DESC
+        GROUP BY chatid
+        HAVING COUNT(*) > 2
+    ) as engaged
     """
     return execute_query(query, (start_date, end_date))
 

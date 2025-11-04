@@ -12,16 +12,15 @@ from dotenv import load_dotenv
 # Charger les variables d'environnement
 load_dotenv()
 
-from database.queries import get_kpi_data, get_completion_candidates
-from utils.llm_analysis import analyze_conversation_completion
+from database.queries import get_kpi_data, get_completion_stats, get_engaged_conversations_count
 from config.settings import CCI_COLORS
 
 def show_loading_placeholders():
     """
     Afficher des placeholders pendant le chargement des KPIs
     """
-    # Placeholders pour les métriques
-    col1, col2, col3, col4 = st.columns(4)
+    # Placeholders pour les métriques - 5 colonnes maintenant
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.markdown("""
@@ -99,6 +98,24 @@ def show_loading_placeholders():
             <div>📈 Préparation...</div>
         </div>
         """, unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown("""
+        <div style="
+            background: linear-gradient(90deg, #f0f0f0 25%, transparent 25%, transparent 50%, #f0f0f0 50%, #f0f0f0 75%, transparent 75%);
+            background-size: 20px 20px;
+            height: 100px;
+            border-radius: 10px;
+            animation: loading 1.5s infinite linear;
+            animation-delay: 1.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+        ">
+            <div>💬 Analyse...</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 def show_kpis_section(start_date, end_date):
     """
@@ -129,21 +146,32 @@ def show_kpis_section(start_date, end_date):
         try:
             # Étape 1: Chargement des données KPI
             status_text.text("🔄 Récupération des données KPI...")
-            progress_bar.progress(25)
+            progress_bar.progress(20)
             kpi_data = get_kpi_data(start_date, end_date)
             
-            # Étape 2: Chargement des données de completion
+            # Étape 2: Chargement des statistiques de completion
             status_text.text("📊 Analyse des taux de completion...")
             progress_bar.progress(50)
-            completion_data = get_completion_candidates(start_date, end_date)
+            completion_stats_df = get_completion_stats(start_date, end_date)
             
-            # Étape 3: Calculs et finalisation
+            # Étape 3: Chargement des conversations engagées
+            status_text.text("💬 Calcul des conversations engagées...")
             progress_bar.progress(75)
-            completion_rate = calculate_completion_rate(completion_data)
+            engaged_df = get_engaged_conversations_count(start_date, end_date)
             
             # Finalisation
             status_text.text("✨ Finalisation de l'affichage...")
             progress_bar.progress(100)
+            
+            # Extraire les valeurs
+            completion_stats = {
+                'total': completion_stats_df.iloc[0]['total_conversations'] if not completion_stats_df.empty else 0,
+                'completed': completion_stats_df.iloc[0]['completed_count'] if not completion_stats_df.empty else 0,
+                'incomplete': completion_stats_df.iloc[0]['incomplete_count'] if not completion_stats_df.empty else 0,
+                'not_analyzed': completion_stats_df.iloc[0]['not_analyzed_count'] if not completion_stats_df.empty else 0
+            }
+            
+            engaged_count = engaged_df.iloc[0]['engaged_conversations'] if not engaged_df.empty else 0
             
             # Nettoyer complètement les placeholders
             placeholders_container.empty()
@@ -154,51 +182,60 @@ def show_kpis_section(start_date, end_date):
             st.info("📊 Données en cours de chargement... Veuillez patienter.")
             return
     
-    # Afficher les métriques principales avec protection contre les erreurs
-    col1, col2, col3, col4 = st.columns(4)
+    # Afficher les métriques principales avec protection contre les erreurs - 5 colonnes maintenant
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     try:
         with col1:
             total_users = kpi_data.get('total_users', 0) if kpi_data else 0
             st.metric(
-                label="👥 Nombre total d'utilisateurs",
+                label="👥 Total conversations",
                 value=int(total_users) if total_users else 0,
                 help="Nombre unique de conversations WhatsApp"
             )
         
         with col2:
+            st.metric(
+                label="💬 Conversations engagées",
+                value=int(engaged_count) if engaged_count else 0,
+                help="Conversations avec plus de 2 messages"
+            )
+        
+        with col3:
             avg_length = kpi_data.get('avg_conversation_length', 0) if kpi_data else 0
             st.metric(
-                label="💬 Longueur moyenne des conversations",
+                label="📏 Longueur moyenne",
                 value=f"{avg_length}",
                 help="Nombre moyen de messages par conversation"
             )
         
-        with col3:
+        with col4:
+            completed_count = completion_stats['completed']
             st.metric(
-                label="✅ Taux de completion",
-                value=f"{completion_rate:.1f}%" if completion_rate else "0.0%",
-                help="Pourcentage de conversations terminées avec un contact fourni"
+                label="✅ Conversations complètes",
+                value=int(completed_count) if completed_count else 0,
+                help="Conversations terminées avec un contact fourni"
             )
         
-        with col4:
-            daily_convs = kpi_data.get('daily_conversations', pd.DataFrame()) if kpi_data else pd.DataFrame()
-            total_conversations = daily_convs['new_conversations'].sum() if not daily_convs.empty else 0
+        with col5:
+            incomplete_count = completion_stats['incomplete']
             st.metric(
-                label="📈 Nouvelles conversations",
-                value=int(total_conversations) if total_conversations else 0,
-                help="Nombre total de nouvelles conversations sur la période"
+                label="⏳ Conversations incomplètes",
+                value=int(incomplete_count) if incomplete_count else 0,
+                help="Conversations non terminées ou sans contact fourni"
             )
     except Exception:
         # En cas d'erreur, afficher des valeurs par défaut
         with col1:
-            st.metric("👥 Nombre total d'utilisateurs", "0")
+            st.metric("👥 Total conversations", "0")
         with col2:
-            st.metric("💬 Longueur moyenne des conversations", "0")
+            st.metric("💬 Conversations engagées", "0")
         with col3:
-            st.metric("✅ Taux de completion", "0.0%")
+            st.metric("📏 Longueur moyenne", "0")
         with col4:
-            st.metric("📈 Nouvelles conversations", "0")
+            st.metric("✅ Conversations complètes", "0")
+        with col5:
+            st.metric("⏳ Conversations incomplètes", "0")
     
     # Graphiques avec indicateurs de chargement
     st.markdown("---")
@@ -215,24 +252,8 @@ def show_kpis_section(start_date, end_date):
         
         with col2:
             with st.spinner("Génération du graphique de completion..."):
-                show_completion_rate_chart(completion_data)
+                show_completion_rate_chart(completion_stats)
 
-def calculate_completion_rate(completion_data):
-    """
-    Calculer le taux de completion en analysant les derniers messages
-    """
-    if completion_data.empty:
-        return 0.0
-    
-    completed_count = 0
-    total_count = len(completion_data)
-    
-    # Analyser chaque dernier message pour détecter la completion
-    for _, row in completion_data.iterrows():
-        if analyze_conversation_completion(row['content']):
-            completed_count += 1
-    
-    return (completed_count / total_count) * 100 if total_count > 0 else 0.0
 
 def show_daily_conversations_chart(daily_conversations_df):
     """
@@ -274,30 +295,43 @@ def show_daily_conversations_chart(daily_conversations_df):
     
     st.plotly_chart(fig, use_container_width=True)
 
-def show_completion_rate_chart(completion_data):
+def show_completion_rate_chart(completion_stats):
     """
-    Afficher un graphique du taux de completion
+    Afficher un graphique du taux de completion depuis les données de la base
     """
     st.subheader("Analyse de completion")
     
-    if completion_data.empty:
+    if not completion_stats or completion_stats['total'] == 0:
         st.info("Aucune donnée disponible pour cette période")
         return
     
-    # Analyser les conversations pour la completion
-    completed = 0
-    incomplete = 0
-    
-    for _, row in completion_data.iterrows():
-        if analyze_conversation_completion(row['content']):
-            completed += 1
-        else:
-            incomplete += 1
+    completed = completion_stats['completed']
+    incomplete = completion_stats['incomplete']
+    not_analyzed = completion_stats['not_analyzed']
     
     # Créer un graphique en secteurs
-    labels = ['Complètes', 'Incomplètes']
-    values = [completed, incomplete]
-    colors = [CCI_COLORS['secondary'], '#CCCCCC']
+    labels = []
+    values = []
+    colors = []
+    
+    if completed > 0:
+        labels.append('Complètes')
+        values.append(completed)
+        colors.append(CCI_COLORS['secondary'])
+    
+    if incomplete > 0:
+        labels.append('Incomplètes')
+        values.append(incomplete)
+        colors.append('#CCCCCC')
+    
+    if not_analyzed > 0:
+        labels.append('Non analysées')
+        values.append(not_analyzed)
+        colors.append('#FFA500')
+    
+    if not values:
+        st.info("Aucune donnée de completion disponible")
+        return
     
     fig = go.Figure(data=[go.Pie(
         labels=labels, 

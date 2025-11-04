@@ -66,8 +66,8 @@ venv.bak/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Streamlit
-.streamlit/secrets.toml
+# Streamlit - tout le dossier contient des secrets
+.streamlit/
 
 # Cache files
 *.cache

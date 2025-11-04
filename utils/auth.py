@@ -12,43 +12,42 @@ load_dotenv()
 
 from config.settings import AUTH_USERNAME, AUTH_PASSWORD
 
-# Session persistante avec cache
-@st.cache_data(ttl=24*3600)  # Cache pendant 24 heures
-def get_persistent_session():
-    """Créer une session persistante qui survit aux refreshs"""
-    return {
-        'authenticated': False,
-        'login_time': None,
-        'session_id': None
-    }
-
 def get_session():
-    """Récupérer ou créer la session persistante"""
-    if 'persistent_auth' not in st.session_state:
-        st.session_state.persistent_auth = get_persistent_session()
-    return st.session_state.persistent_auth
+    """Récupérer ou créer la session"""
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.login_time = None
+        st.session_state.session_id = None
+    
+    return {
+        'authenticated': st.session_state.authenticated,
+        'login_time': st.session_state.login_time,
+        'session_id': st.session_state.session_id
+    }
 
 def check_authentication():
     """
     Vérifier l'authentification avec session persistante (24h)
     """
-    session = get_session()
+    # Initialiser la session si nécessaire
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+        st.session_state.login_time = None
+        st.session_state.session_id = None
     
     # Vérifier si la session a expiré (24 heures)
-    if session['authenticated'] and session['login_time']:
+    if st.session_state.authenticated and st.session_state.login_time:
         current_time = time.time()
-        session_duration = current_time - session['login_time']
+        session_duration = current_time - st.session_state.login_time
         
         # Session expire après 24 heures (86400 secondes)
         if session_duration > 86400:
-            session['authenticated'] = False
-            session['login_time'] = None
-            session['session_id'] = None
-            # Vider le cache pour forcer une nouvelle authentification
-            get_persistent_session.clear()
+            st.session_state.authenticated = False
+            st.session_state.login_time = None
+            st.session_state.session_id = None
             st.warning("⏰ Session expirée après 24h. Veuillez vous reconnecter.")
     
-    if not session['authenticated']:
+    if not st.session_state.authenticated:
         show_login_form()
         return False
     
@@ -76,15 +75,11 @@ def show_login_form():
             
             if submit_button:
                 if authenticate_user(username, password):
-                    session = get_session()
-                    session['authenticated'] = True
-                    session['login_time'] = time.time()
-                    session['session_id'] = hashlib.md5(f"{username}_{time.time()}".encode()).hexdigest()
-                    
-                    # Mettre à jour aussi st.session_state pour compatibilité
+                    # Authentification réussie
                     st.session_state.authenticated = True
+                    st.session_state.login_time = time.time()
+                    st.session_state.session_id = hashlib.md5(f"{username}_{time.time()}".encode()).hexdigest()
                     st.session_state.username = username
-                    st.session_state.login_time = session['login_time']
                     
                     st.success("✅ Connexion réussie ! Session persistante 24h.")
                     st.rerun()
@@ -104,19 +99,13 @@ def logout():
     """
     Déconnecter l'utilisateur
     """
-    session = get_session()
-    session['authenticated'] = False
-    session['login_time'] = None
-    session['session_id'] = None
-    
-    # Nettoyer aussi st.session_state
+    # Nettoyer la session
     st.session_state.authenticated = False
     st.session_state.login_time = None
+    st.session_state.session_id = None
     if 'username' in st.session_state:
         del st.session_state.username
     
-    # Vider le cache
-    get_persistent_session.clear()
     st.rerun()
 
 def show_logout_button():
