@@ -21,38 +21,12 @@ def show_conversations_section(start_date, end_date):
     """
     st.header("Conversations et Analyses")
     
-    # DEBUG : Afficher les paramètres de recherche
-    st.write(f"🔍 **Debug** - Recherche de conversations entre {start_date} et {end_date}")
-    
     # Récupérer les données des conversations
     with st.spinner("Chargement des conversations..."):
         conversations_df = get_conversations_summary_data(start_date, end_date)
     
-    # DEBUG : Afficher le résultat de la requête
-    st.write(f"📊 **Debug** - Nombre de conversations trouvées: {len(conversations_df)}")
-    st.write(f"📊 **Debug** - DataFrame vide? {conversations_df.empty}")
-    
-    if not conversations_df.empty:
-        st.write(f"📊 **Debug** - Colonnes: {list(conversations_df.columns)}")
-        st.write(f"📊 **Debug** - Premières lignes:")
-        st.dataframe(conversations_df.head(2))
-    
     if conversations_df.empty:
         st.info("Aucune conversation trouvée pour cette période.")
-        
-        # Essayer une requête simplifiée pour debug
-        st.write("🔍 Test d'une requête simplifiée...")
-        from database.connection import execute_query
-        test_query = """
-        SELECT COUNT(DISTINCT chatid) as nb_conversations
-        FROM public.message 
-        WHERE created_at >= %s AND created_at <= %s
-        """
-        test_result = execute_query(test_query, (start_date, end_date))
-        if not test_result.empty:
-            st.write(f"✅ Requête simplifiée trouve: {test_result.iloc[0]['nb_conversations']} conversations")
-        else:
-            st.write("❌ Même la requête simplifiée échoue")
         return
     
     # Onglets pour différentes vues
