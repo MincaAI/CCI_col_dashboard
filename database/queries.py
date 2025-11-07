@@ -102,20 +102,21 @@ def get_completion_candidates(start_date, end_date):
 
 def get_completion_stats(start_date, end_date):
     """
-    Récupérer les statistiques de completion depuis la table conversation_analysis
+    Récupérer les statistiques de completion basées sur le nombre de messages
+    Une conversation est complète si elle a plus de 7 messages
     """
     query = """
     SELECT 
         COUNT(*) as total_conversations,
-        COUNT(CASE WHEN ca.is_completed = true THEN 1 END) as completed_count,
-        COUNT(CASE WHEN ca.is_completed = false THEN 1 END) as incomplete_count,
-        COUNT(CASE WHEN ca.is_completed IS NULL THEN 1 END) as not_analyzed_count
+        COUNT(CASE WHEN message_count > 7 THEN 1 END) as completed_count,
+        COUNT(CASE WHEN message_count <= 7 THEN 1 END) as incomplete_count,
+        0 as not_analyzed_count
     FROM (
-        SELECT DISTINCT m.chatid
-        FROM public.message m
-        WHERE m.created_at >= %s AND m.created_at <= %s
-    ) as conversations
-    LEFT JOIN conversation_analysis ca ON conversations.chatid::text = ca.chatid::text
+        SELECT chatid, COUNT(*) as message_count
+        FROM public.message 
+        WHERE created_at >= %s AND created_at <= %s
+        GROUP BY chatid
+    ) as conv_stats
     """
     return execute_query(query, (start_date, end_date))
 

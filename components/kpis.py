@@ -214,7 +214,7 @@ def show_kpis_section(start_date, end_date):
             st.metric(
                 label="✅ Conversations complètes",
                 value=int(completed_count) if completed_count else 0,
-                help="Conversations marquées comme terminées"
+                help="Conversations avec plus de 7 messages"
             )
         
         with col5:
@@ -222,7 +222,7 @@ def show_kpis_section(start_date, end_date):
             st.metric(
                 label="⏳ Conversations incomplètes",
                 value=int(incomplete_count) if incomplete_count else 0,
-                help="Conversations marquées comme non terminées"
+                help="Conversations avec 7 messages ou moins"
             )
     except Exception:
         # En cas d'erreur, afficher des valeurs par défaut
