@@ -12,3 +12,4 @@ cd "$(dirname "$0")"
 # Lancer le script Python avec les arguments passés
 python3 scripts/generate_analysis_batch.py "$@"
 
+

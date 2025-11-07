@@ -38,6 +38,11 @@ def analyze_conversation_completion(messages_content):
     Analyser si une conversation est complète (contient une recommandation de service)
     """
     try:
+        # RÈGLE 1: Une conversation avec moins de 3 messages ne peut jamais être complète
+        if isinstance(messages_content, list):
+            if len(messages_content) < 3:
+                return False
+        
         # Analyser tous les messages de MarIA, pas seulement le dernier
         conversation_text = ""
         if isinstance(messages_content, str):
